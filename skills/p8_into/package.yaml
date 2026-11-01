@@ -1,0 +1,53 @@
+phase_id: P8
+phase_name: INTO Semantics
+package_name: p8_into
+
+description: >
+  Skill package for choosing result alignment, deciding whether INTO writeback
+  is enabled, and generating cardinality-correct target mappings for each
+  SELECT expression group.
+
+dependencies:
+  required_phases:
+    - P7
+  required_spo:
+    - P0.task_family
+    - P5.alias_mode
+  required_flags:
+    - P0.writeback_required
+
+outputs:
+  spo_keys:
+    - result_alignment
+    - writeback_mode
+    - target_mapping
+  flag_keys:
+    - align_by_device
+    - has_into
+    - into_clause_ready
+
+mask_policy:
+  enabled: true
+  mask_file: mask.py
+
+skills:
+  - ResultAlignmentSkill
+  - WritebackModeSkill
+  - WritebackTargetSkill
+
+execution_policy:
+  mode: conditional
+  entry_skill: ResultAlignmentSkill
+  conditional_skills:
+    time_alignment:
+      - WritebackModeSkill
+    device_alignment:
+      - WritebackModeSkill
+    non_aligned_writeback:
+      - WritebackTargetSkill
+    aligned_writeback:
+      - WritebackTargetSkill
+
+skip_policy:
+  allow_skip: false
+  skip_condition: null

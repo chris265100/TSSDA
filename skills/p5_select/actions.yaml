@@ -1,0 +1,22 @@
+actions:
+  - action_id: P5A1
+    skill_id: SelectExpressionSkill
+    decision_name: select_expressions
+    candidates:
+      - select_from_operator_store
+    flag_targets: []
+    activate_next:
+      select_from_operator_store:
+        - AliasModeSkill
+
+  - action_id: P5A2
+    skill_id: AliasModeSkill
+    decision_name: alias_mode
+    activate_when:
+      select_expressions:
+        - select_from_operator_store
+    candidates:
+      - no_alias
+      - use_alias
+    spo_field: alias_mode
+    flag_targets: []

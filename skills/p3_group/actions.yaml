@@ -1,0 +1,52 @@
+actions:
+  - action_id: P3A1
+    skill_id: GroupParadigmSkill
+    decision_name: group_paradigm
+    candidates:
+      - none
+      - segmentation_only
+      - grouping_only
+      - hybrid_grouping
+    spo_field: group_paradigm
+    flag_targets:
+      - where_value
+      - having_flag
+      - group_by_enabled
+    activate_next:
+      segmentation_only:
+        - SegmentAxisSkill
+      grouping_only:
+        - GroupAxisSkill
+      hybrid_grouping:
+        - SegmentAxisSkill
+        - GroupAxisSkill
+
+  - action_id: P3A2
+    skill_id: SegmentAxisSkill
+    decision_name: segment_axis
+    activate_when:
+      group_paradigm:
+        - segmentation_only
+        - hybrid_grouping
+    candidates:
+      - time_interval
+      - variation
+      - condition
+      - session
+      - count
+    spo_field: segment_axis
+    flag_targets: []
+
+  - action_id: P3A3
+    skill_id: GroupAxisSkill
+    decision_name: group_axis
+    activate_when:
+      group_paradigm:
+        - grouping_only
+        - hybrid_grouping
+    candidates:
+      - level
+      - tags
+    spo_field: group_axis
+    flag_targets:
+      - having_flag

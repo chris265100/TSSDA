@@ -1,0 +1,58 @@
+phase_id: P4
+phase_name: Operator Semantics
+package_name: p4_operator
+
+description: >
+  Skill package for planning SELECT-side operator expressions with separate
+  SeriesExpr and AggExpr construction loops, reusable function-family decisions,
+  operator-family decisions, and component instantiation.
+
+dependencies:
+  required_phases:
+    - P3
+  required_spo:
+    - P1.measurement_scope
+    - P3.group_paradigm
+  required_flags:
+    - P1.measurement_count
+    - P2.latest_time
+    - P3.group_by_enabled
+
+outputs:
+  spo_keys:
+    - operator_regime
+  flag_keys:
+    - having_flag2
+
+mask_policy:
+  enabled: true
+  mask_file: mask.py
+
+skills:
+  - OperatorRegimeSkill
+  - SeriesExpressionSkill
+  - AggregateAtomSkill
+  - AggregateExpressionSkill
+  - FunctionSourceSkill
+  - AggregateFunctionFamilySkill
+  - TimeSeriesFunctionFamilySkill
+  - OperatorFamilySkill
+  - ComponentInstantiationSkill
+
+execution_policy:
+  mode: conditional
+  entry_skill: OperatorRegimeSkill
+  op_level_limits:
+    series_expr: 8
+    agg_expr: 10
+  conditional_skills:
+    timeseries_function_query:
+      - SeriesExpressionSkill
+    aggregate_query:
+      - AggregateAtomSkill
+    mixed_nested_query:
+      - SeriesExpressionSkill
+
+skip_policy:
+  allow_skip: false
+  skip_condition: null

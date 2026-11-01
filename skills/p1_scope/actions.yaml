@@ -1,0 +1,77 @@
+actions:
+  - action_id: P1A1
+    skill_id: ScopePatternSkill
+    decision_name: query_object
+    candidates:
+      - series_oriented
+      - device_oriented
+      - tag_aware
+    spo_fields:
+      - query_object
+    flag_targets: []
+    activate_next:
+      series_oriented:
+        - DeviceScopeSkill
+        - MeasurementScopeSkill
+      device_oriented:
+        - DeviceScopeSkill
+      tag_aware:
+        - DeviceScopeSkill
+        - MeasurementScopeSkill
+        - TagScopeSkill
+
+  - action_id: P1A2
+    skill_id: DeviceScopeSkill
+    decision_name: device_scope
+    activate_when:
+      query_object:
+        - series_oriented
+        - device_oriented
+        - tag_aware
+    candidates:
+      - no_device_binding
+      - single_device
+      - device_set
+    spo_fields:
+      - device_scope
+    flag_targets: []
+    expected_decision_fields:
+      - selected_action
+      - target_devices
+      - device_paths
+
+  - action_id: P1A3
+    skill_id: MeasurementScopeSkill
+    decision_name: measurement_scope
+    activate_when:
+      query_object:
+        - series_oriented
+        - tag_aware
+    candidates:
+      - no_measurement_binding
+      - single_measurement
+      - measurement_set
+      - same_measurement_across_devices
+    spo_fields:
+      - measurement_scope
+    flag_targets:
+      - group_agg
+    expected_decision_fields:
+      - selected_action
+      - target_measurements
+      - series_paths
+
+  - action_id: P1A4
+    skill_id: TagScopeSkill
+    decision_name: tag_context
+    activate_when:
+      query_object:
+        - tag_aware
+    candidates:
+      - no_tag_context
+      - single_tag
+      - tag_set
+    spo_fields:
+      - tag_context
+    flag_targets:
+      - tag_agg

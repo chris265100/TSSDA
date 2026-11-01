@@ -1,0 +1,79 @@
+phase_id: P9
+phase_name: Result Organization
+package_name: p9_result
+
+description: >
+  Skill package for selecting and instantiating IoTDB ORDER BY semantics and
+  row/column pagination through LIMIT/OFFSET and SLIMIT/SOFFSET.
+
+dependencies:
+  required_phases:
+    - P8
+  required_spo:
+    - P8.result_alignment
+  required_flags:
+    - P8.has_into
+
+outputs:
+  spo_keys:
+    - ordering_mode
+    - order_by_items
+    - pagination_policy
+    - pagination_values
+  flag_keys:
+    - has_ordering
+    - has_pagination
+    - row_pagination
+    - column_pagination
+    - result_organization_ready
+
+mask_policy:
+  enabled: true
+  mask_file: mask.py
+
+skills:
+  - OrderingModeSkill
+  - OrderingInstantiationSkill
+  - PaginationPolicySkill
+  - PaginationInstantiationSkill
+
+execution_policy:
+  mode: conditional
+  entry_skill: OrderingModeSkill
+  conditional_skills:
+    no_order:
+      - PaginationPolicySkill
+    time_order:
+      - OrderingInstantiationSkill
+      - PaginationPolicySkill
+    device_order:
+      - OrderingInstantiationSkill
+      - PaginationPolicySkill
+    device_time_order:
+      - OrderingInstantiationSkill
+      - PaginationPolicySkill
+    time_device_order:
+      - OrderingInstantiationSkill
+      - PaginationPolicySkill
+    expression_order:
+      - OrderingInstantiationSkill
+      - PaginationPolicySkill
+    latest_metadata_order:
+      - OrderingInstantiationSkill
+      - PaginationPolicySkill
+    row_limit:
+      - PaginationInstantiationSkill
+    row_limit_offset:
+      - PaginationInstantiationSkill
+    column_limit:
+      - PaginationInstantiationSkill
+    column_limit_offset:
+      - PaginationInstantiationSkill
+    row_column_limit:
+      - PaginationInstantiationSkill
+    row_column_limit_offset:
+      - PaginationInstantiationSkill
+
+skip_policy:
+  allow_skip: false
+  skip_condition: null

@@ -1,0 +1,57 @@
+actions:
+  - action_id: P9A1
+    skill_id: OrderingModeSkill
+    decision_name: ordering_mode
+    candidates:
+      - no_order
+      - time_order
+      - device_order
+      - device_time_order
+      - time_device_order
+      - expression_order
+      - latest_metadata_order
+    spo_field: ordering_mode
+    flag_targets:
+      - has_ordering
+
+  - action_id: P9A2
+    skill_id: OrderingInstantiationSkill
+    decision_name: ordering_instantiation
+    candidates:
+      - instantiate_ordering
+    spo_field: order_by_items
+    query_frame_key: order_by
+    generation_only: true
+
+  - action_id: P9A3
+    skill_id: PaginationPolicySkill
+    decision_name: pagination_policy
+    candidates:
+      - no_pagination
+      - row_limit
+      - row_limit_offset
+      - column_limit
+      - column_limit_offset
+      - row_column_limit
+      - row_column_limit_offset
+    spo_field: pagination_policy
+    flag_targets:
+      - has_pagination
+      - row_pagination
+      - column_pagination
+      - result_organization_ready
+
+  - action_id: P9A4
+    skill_id: PaginationInstantiationSkill
+    decision_name: pagination_instantiation
+    candidates:
+      - instantiate_pagination
+    spo_field: pagination_values
+    query_frame_keys:
+      - limit
+      - offset
+      - slimit
+      - soffset
+    generation_only: true
+    flag_targets:
+      - result_organization_ready

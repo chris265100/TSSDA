@@ -1,0 +1,177 @@
+actions:
+  - action_id: P4A1
+    skill_id: OperatorRegimeSkill
+    decision_name: operator_regime
+    candidates:
+      - no_function
+      - timeseries_function_query
+      - aggregate_query
+      - mixed_nested_query
+      - latest_query
+    spo_field: operator_regime
+    flag_targets: []
+    activate_next:
+      timeseries_function_query:
+        - SeriesExpressionSkill
+      aggregate_query:
+        - AggregateAtomSkill
+      mixed_nested_query:
+        - SeriesExpressionSkill
+
+  - action_id: P4A2
+    skill_id: SeriesExpressionSkill
+    decision_name: series_expression_action
+    activate_when:
+      operator_regime:
+        - timeseries_function_query
+        - mixed_nested_query
+    candidates:
+      - wrap_tsgf
+      - wrap_unary_op
+      - extend_binary_const
+      - extend_binary_series
+      - stop_series_expr
+    flag_targets: []
+
+  - action_id: P4A9
+    skill_id: AggregateAtomSkill
+    decision_name: aggregate_atom_action
+    activate_when:
+      operator_regime:
+        - aggregate_query
+      series_expression_action:
+        - stop_series_expr
+    candidates:
+      - make_agg_atom
+    flag_targets: []
+    required_next_skills:
+      - FunctionSourceSkill
+      - AggregateFunctionFamilySkill
+      - ComponentInstantiationSkill
+      - AggregateExpressionSkill
+  - action_id: P4A3
+    skill_id: AggregateExpressionSkill
+    decision_name: aggregate_expression_action
+    activate_when:
+      operator_regime:
+        - aggregate_query
+        - mixed_nested_query
+    candidates:
+      - wrap_scalar_tsgf_post
+      - wrap_unary_agg
+      - extend_binary_agg_const
+      - extend_binary_agg_expr
+      - stop_agg_expr
+    flag_targets: []
+
+  - action_id: P4A4
+    skill_id: FunctionSourceSkill
+    decision_name: function_source
+    activate_when:
+      series_expression_action:
+        - wrap_tsgf
+      aggregate_atom_action:
+        - make_agg_atom
+      aggregate_expression_action:
+        - wrap_scalar_tsgf_post
+    candidates:
+      - builtin_function
+      - udf_function
+      - mixed_function
+    flag_targets: []
+
+  - action_id: P4A5
+    skill_id: AggregateFunctionFamilySkill
+    decision_name: aggregate_function_family
+    activate_when:
+      aggregate_atom_action:
+        - make_agg_atom
+    candidates:
+      - basic_stat_agg
+      - variance_std_agg
+      - extreme_value_agg
+      - first_last_value_agg
+      - time_position_agg
+      - conditional_extreme_locator_agg
+      - profile_integral_time_weighted_agg
+      - profile_robust_stat_agg
+      - profile_period_distribution_agg
+      - matching_similarity_correlation_agg
+    flag_targets: []
+
+  - action_id: P4A6
+    skill_id: TimeSeriesFunctionFamilySkill
+    decision_name: timeseries_function_family
+    activate_when:
+      series_expression_action:
+        - wrap_tsgf
+      aggregate_expression_action:
+        - wrap_scalar_tsgf_post
+    candidates:
+      - math_transform_ts
+      - comparison_state_ts
+      - string_processing_ts
+      - type_cast_ts
+      - constant_series_ts
+      - selection_top_bottom_ts
+      - interval_query_ts
+      - trend_calculation_ts
+      - sampling_downsampling_ts
+      - change_point_ts
+      - data_quality_ts
+      - profile_autocorr_stat_ts
+      - profile_normalize_smooth_sample_segment_ts
+      - anomaly_detection_ts
+      - frequency_domain_ts
+      - matching_local_pattern_corr_ts
+      - data_repair_ts
+      - sequence_discovery_ts
+      - machine_learning_ts
+    flag_targets: []
+
+  - action_id: P4A7
+    skill_id: OperatorFamilySkill
+    decision_name: operator_family
+    activate_when:
+      series_expression_action:
+        - wrap_unary_op
+        - extend_binary_const
+        - extend_binary_series
+      aggregate_expression_action:
+        - wrap_unary_agg
+        - extend_binary_agg_const
+        - extend_binary_agg_expr
+    candidates:
+      - add
+      - divide
+      - modulo
+      - multiply
+      - subtract
+      - unary_minus
+      - unary_plus
+    flag_targets: []
+
+  - action_id: P4A8
+    skill_id: ComponentInstantiationSkill
+    decision_name: component_instantiation
+    activate_when:
+      series_expression_action:
+        - wrap_tsgf
+        - wrap_unary_op
+        - extend_binary_const
+        - extend_binary_series
+      aggregate_atom_action:
+        - make_agg_atom
+      aggregate_expression_action:
+        - wrap_scalar_tsgf_post
+        - wrap_unary_agg
+        - extend_binary_agg_const
+        - extend_binary_agg_expr
+    candidates: []
+    dynamic_candidates: true
+    candidate_source: >
+      Concrete compatible functions from the P4A5/P4A6 family, or the
+      arithmetic operator selected by P4A7.
+    flag_targets: []
+
+

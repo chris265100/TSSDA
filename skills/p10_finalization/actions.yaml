@@ -1,0 +1,11 @@
+actions:
+  - action_id: P10A1
+    skill_id: NL2SQLAssemblySkill
+    decision_name: nl2sql_assembly
+    candidates:
+      - assemble_nl2sql
+    spo_fields:
+      - final_sql
+      - natural_language_query
+      - nl2sql_data
+    flag_targets: []

@@ -1,0 +1,49 @@
+phase_id: P3
+phase_name: Group Semantics
+package_name: p3_group
+
+description: >
+  Skill package for deciding GROUP BY usage, segmentation axes, and
+  cross-series grouping axes in the TSSDA data agent.
+
+dependencies:
+  required_phases:
+    - P2
+  required_spo:
+    - P2.temporal_mode
+  required_flags: []
+
+outputs:
+  spo_keys:
+    - group_paradigm
+    - segment_axis
+    - group_axis
+  flag_keys:
+    - where_value
+    - having_flag
+    - group_by_enabled
+
+mask_policy:
+  enabled: true
+  mask_file: mask.py
+
+skills:
+  - GroupParadigmSkill
+  - SegmentAxisSkill
+  - GroupAxisSkill
+
+execution_policy:
+  mode: conditional
+  entry_skill: GroupParadigmSkill
+  conditional_skills:
+    segmentation_only:
+      - SegmentAxisSkill
+    grouping_only:
+      - GroupAxisSkill
+    hybrid_grouping:
+      - SegmentAxisSkill
+      - GroupAxisSkill
+
+skip_policy:
+  allow_skip: false
+  skip_condition: null

@@ -1,0 +1,49 @@
+phase_id: P7
+phase_name: Fill Semantics
+package_name: p7_fill
+
+description: >
+  Skill package for deciding whether to use IoTDB FILL and instantiating
+  PREVIOUS, LINEAR, or constant fill clauses according to temporal semantics
+  and selected expression data types.
+
+dependencies:
+  required_phases:
+    - P6
+  required_spo:
+    - P2.temporal_mode
+    - P5.alias_mode
+  required_flags: []
+
+outputs:
+  spo_keys:
+    - fill_mode
+    - fill_parameter
+    - fill_clause
+  flag_keys:
+    - has_fill
+    - fill_parameter_required
+    - fill_clause_ready
+
+mask_policy:
+  enabled: true
+  mask_file: mask.py
+
+skills:
+  - FillModeSkill
+  - FillInstantiationSkill
+
+execution_policy:
+  mode: conditional
+  entry_skill: FillModeSkill
+  conditional_skills:
+    previous:
+      - FillInstantiationSkill
+    linear:
+      - FillInstantiationSkill
+    constant:
+      - FillInstantiationSkill
+
+skip_policy:
+  allow_skip: false
+  skip_condition: null

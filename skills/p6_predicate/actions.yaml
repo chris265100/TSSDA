@@ -1,0 +1,40 @@
+actions:
+  - action_id: P6A1
+    skill_id: PredicateModeSkill
+    decision_name: predicate_mode
+    candidates:
+      - none
+      - where_only
+      - having_only
+      - both
+    spo_field: predicate_mode
+    flag_targets:
+      - has_predicate
+      - has_where
+      - has_having
+    activate_next:
+      where_only:
+        - WhereValuePredicateSkill
+      having_only:
+        - HavingPredicateSkill
+      both:
+        - WhereValuePredicateSkill
+        - HavingPredicateSkill
+
+  - action_id: P6A2
+    skill_id: WhereValuePredicateSkill
+    decision_name: where_value_predicates
+    candidates:
+      - generate_where_value_predicates
+    spo_field: where_clause_plan
+    query_frame_key: where
+    generation_only: true
+
+  - action_id: P6A3
+    skill_id: HavingPredicateSkill
+    decision_name: having_predicates
+    candidates:
+      - generate_having_predicates
+    spo_field: having_clause_plan
+    query_frame_key: having
+    generation_only: true

@@ -1,0 +1,62 @@
+actions:
+  - action_id: P2A1
+    skill_id: TemporalModeSkill
+    decision_name: temporal_mode
+    candidates:
+      - no_time
+      - point_time
+      - range_time
+      - window_time
+      - latest_time
+    spo_field: temporal_mode
+    flag_targets:
+      - time_group
+      - where_time
+      - latest_time
+    activate_next:
+      range_time:
+        - TimeScopeSkill
+      window_time:
+        - WindowSizeSkill
+        - WindowStepSkill
+
+  - action_id: P2A2
+    skill_id: TimeScopeSkill
+    decision_name: time_scope
+    activate_when:
+      temporal_mode:
+        - range_time
+    candidates:
+      - bounded_range
+      - single_sided_boundary
+      - relative_range
+      - point_with_tolerance
+    spo_field: time_scope
+    flag_targets: []
+
+  - action_id: P2A3
+    skill_id: WindowSizeSkill
+    decision_name: window_size
+    activate_when:
+      temporal_mode:
+        - window_time
+    candidates:
+      - second_level_window
+      - minute_level_window
+      - hour_level_window
+      - calendar_level_window
+    spo_field: window_size
+    flag_targets: []
+
+  - action_id: P2A4
+    skill_id: WindowStepSkill
+    decision_name: window_step
+    activate_when:
+      temporal_mode:
+        - window_time
+    candidates:
+      - no_sliding_step
+      - second_minute_hour_level_step
+      - calendar_level_step
+    spo_field: window_step
+    flag_targets: []

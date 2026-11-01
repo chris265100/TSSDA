@@ -1,0 +1,45 @@
+phase_id: P10
+phase_name: NL2SQL Finalization
+package_name: p10_finalization
+
+description: >
+  Final package that assembles the completed QueryFrame and working schema into
+  multiple high-quality IoTDB SQL and natural-language data samples.
+
+dependencies:
+  required_phases:
+    - P9
+  required_spo:
+    - P5.alias_mode
+    - P7.fill_mode
+    - P8.result_alignment
+    - P8.writeback_mode
+    - P9.ordering_mode
+    - P9.pagination_policy
+  required_flags:
+    - P7.fill_clause_ready
+    - P8.into_clause_ready
+    - P9.result_organization_ready
+
+outputs:
+  spo_keys:
+    - final_sql
+    - natural_language_query
+    - final_samples
+    - nl2sql_data
+  flag_keys: []
+
+mask_policy:
+  enabled: false
+  mask_file: null
+
+skills:
+  - NL2SQLAssemblySkill
+
+execution_policy:
+  mode: conditional
+  entry_skill: NL2SQLAssemblySkill
+
+skip_policy:
+  allow_skip: false
+  skip_condition: null

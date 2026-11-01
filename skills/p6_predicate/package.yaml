@@ -1,0 +1,54 @@
+phase_id: P6
+phase_name: Predicate Semantics
+package_name: p6_predicate
+
+description: >
+  Skill package for deciding predicate usage and generating WHERE/HAVING
+  predicate clauses grounded in temporal flags, grouping flags, working schema,
+  and P4 aggregate expressions.
+
+dependencies:
+  required_phases:
+    - P5
+  required_spo:
+    - P5.alias_mode
+  required_flags:
+    - P2.where_time
+    - P3.where_value
+    - P3.having_flag
+    - P4.having_flag2
+
+outputs:
+  spo_keys:
+    - predicate_mode
+    - where_clause_plan
+    - having_clause_plan
+  flag_keys:
+    - has_predicate
+    - has_where
+    - has_having
+
+mask_policy:
+  enabled: true
+  mask_file: mask.py
+
+skills:
+  - PredicateModeSkill
+  - WhereValuePredicateSkill
+  - HavingPredicateSkill
+
+execution_policy:
+  mode: conditional
+  entry_skill: PredicateModeSkill
+  conditional_skills:
+    where_only:
+      - WhereValuePredicateSkill
+    having_only:
+      - HavingPredicateSkill
+    both:
+      - WhereValuePredicateSkill
+      - HavingPredicateSkill
+
+skip_policy:
+  allow_skip: false
+  skip_condition: null

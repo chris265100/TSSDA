@@ -1,0 +1,38 @@
+phase_id: P5
+phase_name: Select Semantics
+package_name: p5_select
+
+description: >
+  Skill package for selecting compatible P4 operator expressions and forming
+  the SELECT expression list, with optional alias generation.
+
+dependencies:
+  required_phases:
+    - P4
+  required_spo:
+    - P4.operator_regime
+  required_flags: []
+
+outputs:
+  spo_keys:
+    - alias_mode
+  flag_keys: []
+
+mask_policy:
+  enabled: false
+  mask_file: null
+
+skills:
+  - SelectExpressionSkill
+  - AliasModeSkill
+
+execution_policy:
+  mode: conditional
+  entry_skill: SelectExpressionSkill
+  conditional_skills:
+    select_from_operator_store:
+      - AliasModeSkill
+
+skip_policy:
+  allow_skip: false
+  skip_condition: null

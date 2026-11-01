@@ -1,0 +1,32 @@
+actions:
+  - action_id: P7A1
+    skill_id: FillModeSkill
+    decision_name: fill_mode
+    candidates:
+      - none
+      - previous
+      - linear
+      - constant
+    spo_field: fill_mode
+    flag_targets:
+      - has_fill
+      - fill_parameter_required
+      - fill_clause_ready
+    activate_next:
+      previous:
+        - FillInstantiationSkill
+      linear:
+        - FillInstantiationSkill
+      constant:
+        - FillInstantiationSkill
+
+  - action_id: P7A2
+    skill_id: FillInstantiationSkill
+    decision_name: fill_instantiation
+    candidates:
+      - instantiate_fill_clause
+    spo_field: fill_parameter
+    query_frame_key: fill
+    generation_only: true
+    flag_targets:
+      - fill_clause_ready

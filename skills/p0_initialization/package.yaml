@@ -1,0 +1,42 @@
+phase_id: P0
+phase_name: Initialization
+package_name: p0_initialization
+
+description: >
+  Skill package for initializing the global semantic trajectory of TSSDA SQL generation.
+
+dependencies:
+  required_phases: []
+  required_spo: []
+  required_flags: []
+
+outputs:
+  spo_keys:
+    - task_family
+    - task_subtype
+  flag_keys:
+    - writeback_required
+
+mask_policy:
+  enabled: false
+  mask_file: null
+
+skills:
+  - TaskFamilySkill
+  - RetrievalSubtypeSkill
+  - ComputationSubtypeSkill
+  - AggregationSubtypeSkill
+  - MaterializationSubtypeSkill
+
+execution_policy:
+  mode: conditional
+  entry_skill: TaskFamilySkill
+  conditional_skills:
+    retrieval: RetrievalSubtypeSkill
+    computation: ComputationSubtypeSkill
+    aggregation: AggregationSubtypeSkill
+    materialization: MaterializationSubtypeSkill
+
+skip_policy:
+  allow_skip: false
+  skip_condition: null

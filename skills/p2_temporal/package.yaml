@@ -1,0 +1,50 @@
+phase_id: P2
+phase_name: Temporal Semantics
+package_name: p2_temporal
+
+description: >
+  Skill package for deciding high-level temporal semantics and temporal scope.
+
+dependencies:
+  required_phases:
+    - P1
+  required_spo:
+    - P1.query_object
+    - P1.device_scope
+    - P1.measurement_scope
+  required_flags: []
+
+outputs:
+  spo_keys:
+    - temporal_mode
+    - time_scope
+    - window_size
+    - window_step
+  flag_keys:
+    - time_group
+    - where_time
+    - latest_time
+
+mask_policy:
+  enabled: false
+  mask_file: null
+
+skills:
+  - TemporalModeSkill
+  - TimeScopeSkill
+  - WindowSizeSkill
+  - WindowStepSkill
+
+execution_policy:
+  mode: conditional
+  entry_skill: TemporalModeSkill
+  conditional_skills:
+    range_time:
+      - TimeScopeSkill
+    window_time:
+      - WindowSizeSkill
+      - WindowStepSkill
+
+skip_policy:
+  allow_skip: false
+  skip_condition: null

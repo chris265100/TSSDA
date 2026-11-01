@@ -1,0 +1,70 @@
+actions:
+  - action_id: P0A1
+    skill_id: TaskFamilySkill
+    decision_name: task_family
+    candidates:
+      - retrieval
+      - computation
+      - aggregation
+      - materialization
+    spo_field: task_family
+    flag_targets:
+      - writeback_required
+
+  - action_id: P0A2-1
+    skill_id: RetrievalSubtypeSkill
+    decision_name: retrieval_subtype
+    activate_when:
+      task_family: retrieval
+    candidates:
+      - raw_series
+      - time_range
+      - condition_filter
+      - latest_point
+      - multi_target
+      - wildcard
+    spo_field: task_subtype
+    flag_targets: []
+
+  - action_id: P0A2-2
+    skill_id: ComputationSubtypeSkill
+    decision_name: computation_subtype
+    activate_when:
+      task_family: computation
+    candidates:
+      - basic_expression
+      - trend_change
+      - interval_state
+      - data_quality
+      - sampling_reconstruction
+      - nested_expression
+    spo_field: task_subtype
+    flag_targets: []
+
+  - action_id: P0A2-3
+    skill_id: AggregationSubtypeSkill
+    decision_name: aggregation_subtype
+    activate_when:
+      task_family: aggregation
+    candidates:
+      - summary_statistics
+      - temporal_analysis
+      - entity_comparison
+      - conditional_aggregation
+      - multi_dimensional_analysis
+    spo_field: task_subtype
+    flag_targets: []
+
+  - action_id: P0A2-4
+    skill_id: MaterializationSubtypeSkill
+    decision_name: materialization_subtype
+    activate_when:
+      task_family: materialization
+    candidates:
+      - raw_backup
+      - computed_result_save
+      - aggregated_result_save
+      - reorganized_writeback
+      - analysis_artifact_save
+    spo_field: task_subtype
+    flag_targets: []

@@ -1,0 +1,54 @@
+phase_id: P1
+phase_name: Scope Binding
+package_name: p1_scope
+
+description: >
+  Skill package for binding the query scope over the hierarchical time-series schema.
+
+dependencies:
+  required_phases:
+    - P0
+  required_spo:
+    - P0.task_family
+    - P0.task_subtype
+  required_flags: []
+
+outputs:
+  spo_keys:
+    - query_object
+    - device_scope
+    - measurement_scope
+    - tag_context
+  flag_keys:
+    - group_agg
+    - tag_agg
+    - level_agg
+    - measurement_count
+
+mask_policy:
+  enabled: false
+  mask_file: null
+
+skills:
+  - ScopePatternSkill
+  - DeviceScopeSkill
+  - MeasurementScopeSkill
+  - TagScopeSkill
+
+execution_policy:
+  mode: conditional
+  entry_skill: ScopePatternSkill
+  conditional_skills:
+    series_oriented:
+      - DeviceScopeSkill
+      - MeasurementScopeSkill
+    device_oriented:
+      - DeviceScopeSkill
+    tag_aware:
+      - DeviceScopeSkill
+      - MeasurementScopeSkill
+      - TagScopeSkill
+
+skip_policy:
+  allow_skip: false
+  skip_condition: null

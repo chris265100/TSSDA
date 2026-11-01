@@ -1,0 +1,44 @@
+actions:
+  - action_id: P8A1
+    skill_id: ResultAlignmentSkill
+    decision_name: result_alignment
+    candidates:
+      - time_alignment
+      - device_alignment
+    spo_field: result_alignment
+    query_frame_key: align_by
+    flag_targets:
+      - align_by_device
+    activate_next:
+      time_alignment:
+        - WritebackModeSkill
+      device_alignment:
+        - WritebackModeSkill
+
+  - action_id: P8A2
+    skill_id: WritebackModeSkill
+    decision_name: writeback_mode
+    candidates:
+      - no_writeback
+      - non_aligned_writeback
+      - aligned_writeback
+    spo_field: writeback_mode
+    flag_targets:
+      - has_into
+      - into_clause_ready
+    activate_next:
+      non_aligned_writeback:
+        - WritebackTargetSkill
+      aligned_writeback:
+        - WritebackTargetSkill
+
+  - action_id: P8A3
+    skill_id: WritebackTargetSkill
+    decision_name: writeback_target
+    candidates:
+      - generate_writeback_targets
+    spo_field: target_mapping
+    query_frame_key: into
+    generation_only: true
+    flag_targets:
+      - into_clause_ready
