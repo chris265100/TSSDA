@@ -1,4 +1,4 @@
-"""Validated repair experience, indexed by IoTDB error code."""
+"""Validated experience retrieved by query/operator signatures or error code."""
 
 from __future__ import annotations
 
@@ -19,6 +19,38 @@ def _fingerprint(value: Any) -> str:
     return hashlib.sha256(
         json.dumps(value, sort_keys=True, ensure_ascii=False).encode("utf-8")
     ).hexdigest()
+
+
+def query_signature(frame: dict, state: dict | None = None) -> dict[str, list[str]]:
+    """Discard schema names, literals and absolute timestamps from experience."""
+    spo = (state or {}).get("spo", {})
+    clauses = sorted(key for key in ("time", "group_by", "where", "having", "fill", "into", "order_by")
+                     if frame.get(key))
+    operators = set()
+    for key in ("select", "where", "having", "fill", "group_by"):
+        text = json.dumps(frame.get(key, ""), ensure_ascii=False)
+        text = re.sub(r"'(?:''|[^'])*'", "", text)
+        operators.update("function:" + name.upper() for name in re.findall(r"\b([A-Za-z_][\w]*)\s*\(", text)
+                         if name.upper() not in {"BY", "IN", "FILL"})
+        if key != "group_by":
+            operators.update("binary:" + symbol.strip() for symbol in re.findall(r"[+*/%]|(?<=\w)\s*-(?=\s*\w)", text))
+    modes = [f"{phase}.{key}:{spo[phase][key]}" for phase, key in
+             (("P2", "temporal_mode"), ("P4", "operator_regime")) if spo.get(phase, {}).get(key)]
+    return {"clauses": clauses, "operators": sorted(operators), "modes": sorted(modes)}
+
+
+def _signature_similarity(left, right):
+    # A shared query mode alone must not retrieve unrelated function advice.
+    a, b = set(left.get("operators", [])), set(right.get("operators", []))
+    if a and b and not a & b:
+        return 0.0
+    score = weight = 0.0
+    for key, w in (("operators", .5), ("clauses", .3), ("modes", .2)):
+        a, b = set(left.get(key, [])), set(right.get(key, []))
+        if a or b:
+            weight += w
+            score += w * len(a & b) / len(a | b)
+    return score / weight if weight else 0.0
 
 
 class ExecutionKnowledgeBase:
@@ -81,10 +113,31 @@ class ExecutionKnowledgeBase:
         ))
         return deepcopy(records[:limit])
 
+    def rules_for_generation(self, frame: dict, state: dict | None = None, limit: int = 3) -> list[dict]:
+        """Pick a few relevant, validated rules before any generation failure."""
+        if limit < 1:
+            raise ValueError("Rule retrieval limit must be positive")
+        signature = query_signature(frame, state)
+        candidates = []
+        for code, group in self.error_types.items():
+            for record in group["rules"].values():
+                similarity = max((_signature_similarity(signature, context)
+                                  for context in record.get("contexts", [])), default=0)
+                confidence = (record["success_count"] + 1) / (record["success_count"] + record["failure_count"] + 2)
+                if similarity >= .5 and confidence >= .5:
+                    candidates.append({**deepcopy(record), "error_type": code,
+                                       "retrieval_score": similarity * confidence})
+        candidates.sort(key=lambda record: (-record["retrieval_score"], record["rule_id"]))
+        unique = {}
+        for record in candidates:
+            unique.setdefault(record["rule"].casefold(), record)
+        return list(unique.values())[:limit]
+
     def settle_repair(
         self, *, retrieved: dict[str, list[dict[str, Any]]],
         outcomes: dict[str, bool], rule: str | None,
         run_id: str, attempt: int,
+        context: dict | None = None,
     ) -> dict[str, list[str]]:
         """Credit each retrieved rule once per repair round, then admit new advice.
 
@@ -107,6 +160,8 @@ class ExecutionKnowledgeBase:
                     continue
                 credited.add(rule_id)
                 record["success_count" if success else "failure_count"] += 1
+                if success:
+                    self._remember_context(record, context)
                 record.update(last_used_at=now, last_run_id=run_id, last_attempt=attempt)
                 updates["updated"].append(rule_id)
                 confidence = (record["success_count"] + 1) / (
@@ -128,6 +183,7 @@ class ExecutionKnowledgeBase:
                         "failure_count": 0, "created_at": now,
                     })
                     record["success_count"] += 1
+                    self._remember_context(record, context)
                     record.update(last_used_at=now, last_run_id=run_id, last_attempt=attempt)
                     updates["admitted"].append(rule_id)
             if code in self.error_types and not self.error_types[code]["rules"]:
@@ -135,6 +191,14 @@ class ExecutionKnowledgeBase:
         if any(updates.values()):
             self.save()
         return updates
+
+    @staticmethod
+    def _remember_context(record, context):
+        if context and any(context.values()):
+            contexts = record.setdefault("contexts", [])
+            if context not in contexts:
+                contexts.append(deepcopy(context))
+                del contexts[:-8]
 
     def _validate_loaded_rules(self) -> None:
         for code, group in self.error_types.items():

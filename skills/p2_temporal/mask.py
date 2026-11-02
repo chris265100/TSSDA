@@ -1,13 +1,9 @@
-"""Action mask scaffold for this TSSDA skill package."""
+"""Executable temporal constraints from the shared curated rule set."""
 
 from __future__ import annotations
 
+from tssda.constraints import mask_actions
+
 
 def build_mask(action_id: str, state: dict, action_space: list[str]) -> list[str]:
-    """Return currently valid candidates for an action-level skill.
-
-    The scaffold keeps all candidates enabled. Phase-specific grammar and
-    semantic dependency constraints should be added during detailed phase work.
-    """
-
-    return list(action_space)
+    return mask_actions(action_id, state, action_space)

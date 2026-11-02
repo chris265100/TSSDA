@@ -11,6 +11,7 @@ from .schema import DatabaseSchema
 from .skill_runner import SkillRunner
 from .state import QueryFrame, State
 from .memory.expressions import KINDS_BY_REGIME
+from .skill_routing import next_skill_targets
 
 
 P4_COMPONENT_SKILLS = frozenset(
@@ -99,16 +100,21 @@ class PhaseRunner:
                 execution_policy=execution_policy,
                 skill_output=skill_output,
             )
+            next_skills = next_skill_targets(
+                package, skill_id, skill_output.get("selected_action"),
+                state.to_skill_state(), declared=next_skills,
+            )
             if package.phase_id == "P4" and skill_id == "OperatorRegimeSkill":
                 trace = self._reuse_p4_expressions(package, state)
                 if trace is not None:
                     package_output["expression_memory"] = trace
                     if trace["hit"]:
-                        # Concrete expressions already satisfy this regime.
-                        # P5 consumes the populated pool directly; no component
-                        # decisions or SQL expression generation are necessary.
-                        next_skills = []
+                        # Reuse seeds the pool; the normal action prior still
+                        # chooses whether to extend it or stop exploration.
+                        if trace["kind"] == "AggExpr" and state.get_spo_value("P4", "operator_regime") == "aggregate_query":
+                            next_skills = ["AggregateExpressionSkill"]
                         self._emit(f"[TSSDA][P4] Expression memory reused {len(trace['expressions'])} {trace['kind']} expression(s).")
+            skill_output["next_skills"] = list(next_skills[:1])
             continuation_skills = self._run_constructing_expression_pipeline(
                 package=package,
                 state=state,

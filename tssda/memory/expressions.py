@@ -10,10 +10,12 @@ from __future__ import annotations
 from copy import deepcopy
 from dataclasses import dataclass, field
 import re
+import random
 from typing import Any, Iterable
 
-from .matcher import MemoryMatchConfig
-from .models import MemoryStatistics, stable_fingerprint
+from .matcher import MemoryMatchConfig, score_profiles, temporal_rejection_reasons
+from .models import MemoryStatistics, StateMemoryProfile, stable_fingerprint
+from .temporal import inputs_have_common_timestamps
 from .profiles import StateProfileBuilder
 
 
@@ -53,9 +55,8 @@ class ExpressionMemoryRecord:
     def record_key(self) -> str:
         value = self.to_dict()
         value.pop("statistics")
-        # Names are binding preferences, not identity: the same typed template
-        # learned on another schema reinforces the existing record.
-        value["inputs"] = [{"data_type": item["data_type"]} for item in self.inputs]
+        # Measurement names are the available semantic identity. Do not merge
+        # unrelated operands solely because their types happen to match.
         return stable_fingerprint(value)
 
     def to_dict(self) -> dict[str, Any]:
@@ -122,8 +123,7 @@ class ExpressionMemoryStore:
 
 
 def _context(state: Any) -> dict[str, Any]:
-    # Reuse a small subset of the existing profiles. Cardinalities and absolute
-    # time bounds do not affect expression applicability and are excluded.
+    # Reuse the same observed temporal features and Sim as state-level memory.
     builder = StateProfileBuilder()
     schema = builder._schema_profile(state)
     return {
@@ -135,6 +135,13 @@ def _context(state: Any) -> dict[str, Any]:
         "segment_axis": state.get_spo_value("P3", "segment_axis"),
         "group_axis": state.get_spo_value("P3", "group_axis"),
         "measurement_sharing": schema.measurement_sharing,
+        "profile": builder.build_profile(state=state, active_profile_fields=(
+            "schema.measurement_sharing", "schema.data_type_family",
+            "temporal.intent_pattern", "temporal.data_span", "temporal.coverage_overlap",
+            "temporal.query_scope.data_overlap", "temporal.query_scope.span_ratio",
+            "temporal.query_scope.position", "temporal.window_shape.window_count",
+            "temporal.window_shape.step_relation",
+        )).to_dict(),
     }
 
 
@@ -202,22 +209,16 @@ def build_expression_record(state: Any, kind: str, descriptor: dict[str, Any]) -
 
 def _bind(record: ExpressionMemoryRecord, raw: dict[str, str]) -> dict[str, Any] | None:
     bindings: dict[str, str] = {}
-    used: set[str] = set()
-    # Reserve exact-name matches before assigning fallbacks to avoid stealing
-    # a later input's preferred binding. Distinct inputs stay distinct.
+    # Exact measurement name and type are a conservative semantic binding.
+    # With no ontology/aliases in State, unrelated same-type names are rejected.
     for index, item in enumerate(record.inputs):
         if raw.get(item["name"]) == item["data_type"]:
             bindings[f"__mem_input_{index}__"] = item["name"]
-            used.add(item["name"])
     for index, item in enumerate(record.inputs):
         slot = f"__mem_input_{index}__"
         if slot in bindings:
             continue
-        name = next((name for name in sorted(raw) if name not in used and raw[name] == item["data_type"]), None)
-        if name is None:
-            return None
-        bindings[slot] = name
-        used.add(name)
+        return None
     def render(token: str) -> str:
         if token not in bindings:
             return token
@@ -252,6 +253,7 @@ def _used_in_final_sql(state: Any, expression: str, *, allow_provisional: bool =
 class ExpressionMemoryController:
     def __init__(self, store: ExpressionMemoryStore, config: MemoryMatchConfig, *, read_enabled: bool = True):
         self.store, self.config, self.read_enabled = store, config, read_enabled
+        self._random = random.Random(config.random_seed)
         self._pending: dict[str, tuple[ExpressionMemoryRecord, Any, str]] = {}
         self._reused: dict[str, tuple[ExpressionMemoryRecord, Any, str]] = {}
 
@@ -274,29 +276,46 @@ class ExpressionMemoryController:
         raw = _raw_inputs(state)
         config = self.config
         eligible = []
+        profile = StateMemoryProfile.from_dict(context["profile"])
+        trace["temporal_profile"] = profile.temporal.to_matching_dict()
         for record in candidates:
             confidence = record.statistics.confidence(alpha=config.reliability_alpha, beta=config.reliability_beta)
-            if (record.context != context or record.op_level > max_level
+            if ({k: v for k, v in record.context.items() if k != "profile"}
+                    != {k: v for k, v in context.items() if k != "profile"}
+                    or record.op_level > max_level
                     or record.statistics.ns < config.min_validation_successes
                     or confidence < config.min_reliability):
                 continue
+            if "profile" not in record.context:
+                continue
+            remembered = StateMemoryProfile.from_dict(record.context["profile"])
+            similarity = score_profiles(profile, remembered)
+            if (remembered.profile_version != profile.profile_version
+                    or temporal_rejection_reasons(profile.temporal, remembered.temporal)
+                    or similarity.similarity < config.min_profile_similarity
+                    or similarity.coverage < config.min_evidence_coverage):
+                continue
             bound = _bind(record, raw)
-            if bound is not None:
-                score = confidence / (1 + config.reuse_penalty * record.statistics.nr)
-                eligible.append((score, record, bound))
+            if bound is not None and (len(record.inputs) < 2 or inputs_have_common_timestamps(
+                state.memory_context.temporal_observations, [item["name"] for item in record.inputs],
+            )):
+                score = similarity.similarity * confidence / (1 + config.reuse_penalty * record.statistics.nr)
+                eligible.append((score, record, bound, similarity.similarity))
         existing = {tuple(_comparison_tokens(item.get("name") or item.get("expression") or ""))
                     for item in state.get_operator_store().get(kind, [])}
-        for _, record, bound in sorted(eligible, key=lambda item: (-item[0], item[1].record_key)):
-            key = tuple(_comparison_tokens(bound["name"]))
-            if key in existing:
-                continue
-            existing.add(key)
+        eligible = [item for item in eligible if tuple(_comparison_tokens(item[2]["name"])) not in existing]
+        eligible.sort(key=lambda item: (-item[0], item[1].record_key))
+        eligible = eligible[:config.top_k]
+        total = sum(item[0] for item in eligible)
+        trace["matches"] = [{"record_id": r.record_key, "profile_similarity": sim,
+                             "rank_score": score, "selection_probability": score / total}
+                            for score, r, _, sim in eligible] if total else []
+        if total:
+            _, record, bound, _ = self._random.choices(eligible, weights=[item[0] for item in eligible], k=1)[0]
             state.update_operator_store({f"append_{kind}": [bound]})
             self._reused[record.record_key] = (record, state, bound["name"])
             trace["record_ids"].append(record.record_key)
             trace["expressions"].append(deepcopy(bound))
-            if len(trace["expressions"]) >= config.top_k:
-                break
         trace["hit"] = bool(trace["expressions"])
         return trace
 

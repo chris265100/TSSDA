@@ -2,6 +2,8 @@
 
 TSSDA is an automated data generation framework for Text-to-SQL tasks in time-series databases.
 
+The TERN Benchmark dataset will be released soon.
+
 ## Setup
 
 Use Python 3.10 or newer and an accessible Apache IoTDB database:
@@ -62,6 +64,13 @@ configuration and unrecoverable generation errors stop the command.
 - `iotdb_tools/`: schema and time-bound access used by the framework.
 - `run_tssda.py`: command-line entry point.
 - `tests/`: offline checks using synthetic schemas and mocked services.
+
+The runner derives phase order from package dependencies using a topological
+sort, then resolves Skill successors after each action. State-level and
+operator-level memory share temporal sampling profiles and score-based
+retrieval. Operator hits seed P4 exploration; validated execution experience is
+also retrieved before generation. See [generation architecture and executable
+rules](docs/architecture.md) for the bounded probes, matching policy and rules.
 
 ## Offline checks
 

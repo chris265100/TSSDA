@@ -5,7 +5,7 @@ from __future__ import annotations
 from copy import deepcopy
 from typing import Any, Callable
 
-from .execution_knowledge import ExecutionKnowledgeBase
+from .execution_knowledge import ExecutionKnowledgeBase, query_signature
 from .infrastructure import InsufficientBalanceError
 from .sql_generation_agent import SQLGenerationAgent, SQLGenerationInput
 from .sql_validator import IoTDBSQLValidator
@@ -28,7 +28,8 @@ class ValidatedSQLGeneration:
             if isinstance(configured_limit, int) and configured_limit >= 1
             else 3
         )
-        self.knowledge_base = knowledge_base
+        self.knowledge_base = knowledge_base if knowledge_base is not None else ExecutionKnowledgeBase()
+        self.agent.execution_knowledge_base = self.knowledge_base
         self.progress_callback = progress_callback
 
     def run(
@@ -53,6 +54,7 @@ class ValidatedSQLGeneration:
         ):
             base_output_limit = None
         max_samples = int(generation_input.extra_payload.get("max_sample_count") or 3)
+        context = query_signature(generation_input.query_frame, generation_input.state)
         for attempt in range(1, MAX_FINAL_GENERATIONS + 1):
             successful = [*accepted, *unsupported]
             current_input = deepcopy(generation_input)
@@ -113,7 +115,7 @@ class ValidatedSQLGeneration:
                 errors.append(error)
                 attempt_log["generation_error"] = deepcopy(error)
                 attempt_log["knowledge_update"] = self._settle_knowledge(
-                    repair_targets, retrieved, [], None, run_id, attempt,
+                    repair_targets, retrieved, [], None, run_id, attempt, context,
                 )
                 self._emit(f"[TSSDA][P10] Generation failed: {exc}")
                 continue
@@ -229,7 +231,7 @@ class ValidatedSQLGeneration:
                 next_targets.extend(deepcopy(repair_targets[len(target_results):]))
             attempt_log["knowledge_update"] = self._settle_knowledge(
                 repair_targets, retrieved, target_results,
-                generated.get("repair_rule"), run_id, attempt,
+                generated.get("repair_rule"), run_id, attempt, context,
             )
             repair_targets = next_targets
             self._emit(
@@ -305,6 +307,7 @@ class ValidatedSQLGeneration:
     def _settle_knowledge(
         self, targets: list[dict[str, Any]], retrieved: dict[str, list[dict[str, Any]]],
         results: list[bool | None], rule: str | None, run_id: str, attempt: int,
+        context: dict | None = None,
     ) -> dict[str, Any]:
         grouped: dict[str, list[bool]] = {}
         for index, target in enumerate(targets):
@@ -326,6 +329,7 @@ class ValidatedSQLGeneration:
         updates = self.knowledge_base.settle_repair(
             retrieved=retrieved, outcomes=outcomes,
             rule=rule if complete_success else None, run_id=run_id, attempt=attempt,
+            context=context,
         )
         return {"outcomes_by_error_type": outcomes, **updates}
 

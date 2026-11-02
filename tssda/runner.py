@@ -18,6 +18,7 @@ from .decision_learning import (
     DecisionLearningStore,
 )
 from .errors import TrajectoryFailureLimitExceeded
+from .constraints import topological_phase_order
 from .execution_knowledge import ExecutionKnowledgeBase
 from .infrastructure import (
     InsufficientBalanceError,
@@ -468,7 +469,8 @@ class TSSDARunner:
         unknown = [phase_id for phase_id in requested if phase_id not in self.phase_order]
         if unknown:
             raise ValueError(f"Unknown phase ids: {unknown}")
-        return [phase_id for phase_id in self.phase_order if phase_id in requested]
+        packages = [self.package_loader.load(phase_id) for phase_id in self.phase_order if phase_id in requested]
+        return topological_phase_order(packages)
 
     def _emit(self, message: str) -> None:
         if self.progress_callback is not None:

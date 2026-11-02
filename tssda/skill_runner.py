@@ -70,6 +70,7 @@ class SkillRunner:
         # multiply that budget by the generic model-output retry loop.
         total_attempts = 1 if package.phase_id == "P10" else MAX_MODEL_OUTPUT_RETRIES + 1
         for attempt in range(1, total_attempts + 1):
+            routing_start = len(state.skill_routing_decisions)
             retry_instruction = (
                 build_retry_instruction(retry_errors[-1])
                 if retry_errors
@@ -93,6 +94,7 @@ class SkillRunner:
                 )
                 return output
             except (TypeError, ValueError) as exc:
+                del state.skill_routing_decisions[routing_start:]
                 error = build_model_output_error(exc, attempt=attempt)
                 error["max_output_tokens"] = token_limit
                 retry_errors.append(error)
@@ -174,9 +176,9 @@ class SkillRunner:
             raise KeyError(f"Skill {skill_id} is not registered in {package.package_name}")
 
         skill = skill_cls(llm=self.semantic_decision_agent)
-        routes = routing_candidates(package, skill) if self.skill_routing_controller is not None else {}
         raw_action_space = self._get_raw_action_space(skill)
         state_view = state.to_skill_state()
+        routes = routing_candidates(package, skill, state_view) if self.skill_routing_controller is not None else {}
         state_view["package_config"] = deepcopy(package.package_config)
         if not raw_action_space and getattr(skill, "allow_empty_action_space", False):
             masked_action_space = []
@@ -208,15 +210,9 @@ class SkillRunner:
             and learning_controller is not None
             and learning_controller.should_bypass_state_memory(skill)
         )
-        # Routing stays an agent decision so online suitability can guide it.
-        bypass_state_memory = bypass_state_memory or bool(routes)
-
-        if not bypass_state_memory:
-            self._prepare_memory_profile_context(
-                package=package,
-                skill=skill,
-                state=state,
-            )
+        self._prepare_memory_profile_context(
+            package=package, skill=skill, state=state,
+        )
 
         skill_input = self.build_skill_input(
             phase_id=package.phase_id,
@@ -254,7 +250,7 @@ class SkillRunner:
         routing_proxy = None
         if routes and self.skill_routing_controller is not None:
             facts = semantic_facts(state_view)
-            knowledge = self.skill_routing_controller.guidance(package.phase_id, facts, masked_action_space)
+            knowledge = self.skill_routing_controller.guidance(f"{package.phase_id}:{skill.skill_id}", facts, masked_action_space)
             routing_proxy = SkillRoutingAgentProxy(
                 delegate=skill.llm, phase=package.phase_id, routes=routes, knowledge=knowledge,
             )
@@ -1524,10 +1520,12 @@ class SkillRunner:
         if tool_module is None or not hasattr(tool_module, "read_working_schema_time_ranges"):
             return
 
-        time_range = tool_module.read_working_schema_time_ranges(
-            state=state.to_skill_state(),
-            working_schema=state.schema.get_active_working_schema(),
-        )
+        time_range = state.memory_context.temporal_observations
+        if not time_range:
+            time_range = tool_module.read_working_schema_time_ranges(
+                state=state.to_skill_state(),
+                working_schema=state.schema.get_active_working_schema(),
+            )
         state.set_memory_temporal_observations(time_range)
         generation_input.extra_payload["data_time_range"] = deepcopy(time_range)
         if generation_input.base_info.get("action_id") == "P2A3":

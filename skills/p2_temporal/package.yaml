@@ -26,8 +26,8 @@ outputs:
     - latest_time
 
 mask_policy:
-  enabled: false
-  mask_file: null
+  enabled: true
+  mask_file: mask.py
 
 skills:
   - TemporalModeSkill

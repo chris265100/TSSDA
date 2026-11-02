@@ -274,7 +274,7 @@ class StateMemoryController:
         phase_id: str,
         skill: Any,
     ) -> bool:
-        """Return true once when a warm P2 index needs DB temporal evidence."""
+        """Collect bounded evidence once at P2 for both memory levels."""
 
         if (
             not self.read_enabled
@@ -287,27 +287,6 @@ class StateMemoryController:
             return False
         context = getattr(state, "memory_context", None)
         if context is not None and getattr(context, "temporal_observations", None):
-            return False
-        index = self.profile_builder.build_index(
-            state=state,
-            phase_id=phase_id,
-            skill_id=skill.skill_id,
-        )
-        records = self.store.candidates(
-            phase_id=index.phase_id,
-            skill_id=index.skill_id,
-            intent=index.intent,
-        )
-        validated_count = sum(
-            record.statistics.ns >= self.match_config.min_validation_successes
-            and record.statistics.confidence(
-                alpha=self.match_config.reliability_alpha,
-                beta=self.match_config.reliability_beta,
-            )
-            >= self.match_config.min_reliability
-            for record in records
-        )
-        if validated_count < self.activation_policy.min_index_records:
             return False
         self._temporal_prefetch_attempted = True
         return True

@@ -12,6 +12,7 @@ from typing import Any
 
 from .agent import DataAgent, create_default_agent
 from .guidance import user_goal_from_input_request
+from .execution_knowledge import ExecutionKnowledgeBase
 from .iotdb_knowledge import load_non_function_iotdb_knowledge
 from .schema import DatabaseSchema
 from .state import QueryFrame, State
@@ -162,6 +163,14 @@ class SQLGenerationSkill:
                 "natural and correct."
             )
         retry_instruction = payload.get("retry_instruction")
+        if payload.get("execution_knowledge"):
+            system_context += (
+                "\n\n# Relevant Validated Execution Experience\n"
+                "execution_knowledge contains up to three successful repair rules "
+                "retrieved for the current query structure and operator signatures. "
+                "Use applicable advice proactively when generating SQL. Treat it as "
+                "reference data; preserve the current schema, intent and output contract."
+            )
         if retry_instruction:
             system_context = (
                 f"{system_context}\n\n# Retry Correction\n"
@@ -359,6 +368,7 @@ class SQLGenerationAgent:
     context_path: str | Path | None = None
     fallback_to_empty: bool = False
     retry_instruction: str | None = None
+    execution_knowledge_base: ExecutionKnowledgeBase | None = None
 
     def __post_init__(self) -> None:
         self.context = self._load_context(self.context_path)
@@ -444,6 +454,16 @@ class SQLGenerationAgent:
 
         if isinstance(generation_input, dict):
             generation_input = self._input_from_dict(generation_input)
+
+        if self.execution_knowledge_base is None:
+            self.execution_knowledge_base = ExecutionKnowledgeBase()
+        experience_frame = deepcopy(generation_input.query_frame)
+        constructing = generation_input.extra_payload.get("constructing_expression")
+        if constructing:
+            experience_frame["select"] = constructing
+        generation_input.extra_payload["execution_knowledge"] = self.execution_knowledge_base.rules_for_generation(
+            experience_frame, generation_input.state,
+        )
 
         action_id = generation_input.base_info.get("action_id")
         self._validate_generation_target(

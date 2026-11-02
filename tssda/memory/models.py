@@ -10,7 +10,7 @@ import json
 from typing import Any
 
 
-PROFILE_VERSION = 1
+PROFILE_VERSION = 2
 
 UNSET = "UNSET"
 NONE = "NONE"
@@ -73,6 +73,10 @@ TEMPORAL_SIGNATURE_WEIGHTS = {
     "temporal.intent_pattern": 0.08,
     "temporal.data_span": 0.04,
     "temporal.coverage_overlap": 0.06,
+    "temporal.sampling_interval": 0.05,
+    "temporal.sampling_regularity": 0.04,
+    "temporal.timestamp_alignment": 0.08,
+    "temporal.point_distribution": 0.05,
     "temporal.query_scope.data_overlap": 0.06,
     "temporal.query_scope.span_ratio": 0.04,
     "temporal.query_scope.position": 0.035,
@@ -371,6 +375,10 @@ class TemporalProfile:
     query_scope: QueryScopeProfile = field(default_factory=QueryScopeProfile)
     window_shape: WindowShapeProfile = field(default_factory=WindowShapeProfile)
     failure_contexts: list[TemporalFailureContext] = field(default_factory=list)
+    sampling_interval: str = UNKNOWN
+    sampling_regularity: str = UNKNOWN
+    timestamp_alignment: str = UNKNOWN
+    point_distribution: str = UNKNOWN
 
     def __post_init__(self) -> None:
         self.failure_contexts = [
@@ -387,6 +395,10 @@ class TemporalProfile:
             "intent_pattern": self.intent_pattern,
             "data_span": self.data_span,
             "coverage_overlap": self.coverage_overlap,
+            "sampling_interval": self.sampling_interval,
+            "sampling_regularity": self.sampling_regularity,
+            "timestamp_alignment": self.timestamp_alignment,
+            "point_distribution": self.point_distribution,
             "query_scope": self.query_scope.to_dict(),
             "window_shape": self.window_shape.to_dict(),
         }
@@ -447,6 +459,10 @@ class TemporalProfile:
             intent_pattern=str(value.get("intent_pattern", UNSET)),
             data_span=str(value.get("data_span", UNSET)),
             coverage_overlap=str(value.get("coverage_overlap", UNSET)),
+            sampling_interval=str(value.get("sampling_interval", UNKNOWN)),
+            sampling_regularity=str(value.get("sampling_regularity", UNKNOWN)),
+            timestamp_alignment=str(value.get("timestamp_alignment", UNKNOWN)),
+            point_distribution=str(value.get("point_distribution", UNKNOWN)),
             query_scope=QueryScopeProfile.from_dict(value.get("query_scope")),
             window_shape=WindowShapeProfile.from_dict(value.get("window_shape")),
             failure_contexts=[

@@ -8,6 +8,8 @@ from datetime import datetime, timezone
 import re
 from typing import Any, Iterable
 
+from .temporal import SAMPLING_FIELDS, sampling_features
+
 from .models import (
     ClauseFlag,
     MemoryIndex,
@@ -104,13 +106,16 @@ class StateProfileBuilder:
         active_profile_fields: Iterable[str] = (),
     ) -> StateMemoryProfile:
         context = self._memory_context(state)
+        fields = tuple(active_profile_fields)
+        if any(path.startswith("temporal.") for path in fields):
+            fields = tuple(dict.fromkeys((*fields, *(f"temporal.{name}" for name in SAMPLING_FIELDS))))
         return StateMemoryProfile(
             canonical_spo=self._canonical_spo(state, required_spo),
             query=self._query_profile(state),
             schema=self._schema_profile(state),
             temporal=self._temporal_profile(state, context),
             masked_action_space=tuple(masked_action_space),
-            active_profile_fields=tuple(active_profile_fields),
+            active_profile_fields=fields,
         )
 
     def _canonical_spo(
@@ -245,6 +250,7 @@ class StateProfileBuilder:
             coverage_overlap=coverage_overlap,
             query_scope=query_scope,
             window_shape=window_shape,
+            **sampling_features(context.temporal_observations, query_bounds),
         )
 
     @staticmethod

@@ -1,7 +1,7 @@
-"""Lightweight semantic feedback for phase-entry Skill routing.
+"""Incremental, action-driven Skill routing with semantic feedback.
 
-Route keys deliberately keep the existing action names: a route may select a
-Skill sequence, or skip it. Execution and SPO/Flag updates remain with the agent.
+Route keys keep the existing action names. Only the immediate successor is
+exposed to the agent; subsequent successors are resolved from updated State.
 The local rules below are standalone semantic checks, with no runtime dependency
 on action masks or phase tools.
 """
@@ -19,8 +19,9 @@ from typing import Any
 
 ROUTING_INSTRUCTION = (
     "This step is a Skill routing decision. Choose exactly one route key from "
-    "action_space as selected_action to select the subsequent Skills in "
-    "candidate_descriptions[next_skills]. An empty sequence skips further Skills "
+    "action_space as selected_action to select the immediate next Skill in "
+    "candidate_descriptions[next_skills]. Later routing is resolved only after "
+    "that Skill's action updates the state. An empty sequence skips further Skills "
     "in this phase. The agent applies the route and its original state effects. "
     "Use skill_routing_knowledge as online semantic suitability guidance: prefer "
     "higher scores among semantically appropriate routes, while respecting "
@@ -28,20 +29,42 @@ ROUTING_INSTRUCTION = (
 )
 
 
-def routing_candidates(package, skill) -> dict[str, list[str]]:
-    """Wrap at most one branching entry Skill per phase (P5/P10 have none)."""
+def next_skill_targets(package, skill_id, action, state, declared=None):
+    """Resolve the next edge, rather than queue a complete entry-time route."""
+    spo = state.get("spo", {})
+    followups = {
+        "DeviceScopeSkill": (spo.get("P1", {}).get("query_object") in {"series_oriented", "tag_aware"}, "MeasurementScopeSkill"),
+        "MeasurementScopeSkill": (spo.get("P1", {}).get("query_object") == "tag_aware", "TagScopeSkill"),
+        "WindowSizeSkill": (spo.get("P2", {}).get("temporal_mode") == "window_time", "WindowStepSkill"),
+        "SegmentAxisSkill": (spo.get("P3", {}).get("group_paradigm") == "hybrid_grouping", "GroupAxisSkill"),
+        "WhereValuePredicateSkill": (spo.get("P6", {}).get("predicate_mode") == "both"
+            and _flag(state, "P3", "having_flag") and _flag(state, "P4", "having_flag2"), "HavingPredicateSkill"),
+        "OrderingInstantiationSkill": (True, "PaginationPolicySkill"),
+    }
+    if package.phase_id != "P4" and skill_id in followups:
+        enabled, target = followups[skill_id]
+        return [target] if enabled else []
     policy = package.package_config.get("execution_policy", {})
+    if declared is None:
+        cls = package.skill_registry.get(skill_id)
+        info = getattr(cls, "candidate_descriptions", {}).get(action, {})
+        declared = info.get("required_next_skills")
+    if declared is None:
+        conditional = policy.get("conditional_skills", {})
+        declared = conditional.get(action, []) if isinstance(conditional, dict) else conditional
+    targets = [declared] if isinstance(declared, str) else list(declared)
+    # P4's expression component pipeline is an atomic construction operation;
+    # its internal steps remain runner-owned. Exploration routes are per action.
+    return targets if package.phase_id == "P4" else targets[:1]
+
+
+def routing_candidates(package, skill, state=None) -> dict[str, list[str]]:
+    """Attach next-edge guidance to each branching decision, including loops."""
     descriptions = getattr(skill, "candidate_descriptions", {})
-    if skill.skill_id != policy.get("entry_skill") or len(descriptions) < 2:
+    if len(descriptions) < 2:
         return {}
-    conditional = policy.get("conditional_skills", {})
-    if not isinstance(conditional, dict) or not conditional:
-        return {}
-    routes = {}
-    for action, description in descriptions.items():
-        targets = description.get("required_next_skills", conditional.get(action, []))
-        routes[action] = [targets] if isinstance(targets, str) else list(targets)
-    return routes
+    return {action: next_skill_targets(package, skill.skill_id, action, state or {})[:1]
+            for action in descriptions}
 
 
 def _flag(state: dict, phase: str, name: str):
@@ -202,17 +225,19 @@ class SkillRoutingController:
 
     def record(self, *, state, phase: str, skill_id: str, action: str,
                routes: dict, facts: dict, reason: str, knowledge: dict) -> dict:
-        local = validate_local_route(phase, action, facts)
+        entry_rules = {"TaskFamilySkill", "GroupParadigmSkill", "OperatorRegimeSkill",
+                       "PredicateModeSkill", "FillModeSkill", "ResultAlignmentSkill", "OrderingModeSkill"}
+        local = (validate_local_route(phase, action, facts) if skill_id in entry_rules
+                 else {"passed": True, "reasons": []})
         record = {
-            "decision_id": phase, "phase_id": phase, "source_skill_id": skill_id,
-            "selected_route": action, "next_skills": routes[action], "reason": reason,
+            "decision_id": f"{phase}:{skill_id}:{len(state.skill_routing_decisions)}",
+            "phase_id": phase, "source_skill_id": skill_id,
+            "selected_route": action, "next_skills": routes.get(action, []), "reason": reason,
             "semantic_context": knowledge["semantic_context"],
             "routing_score": knowledge["scores"].get(action),
             "rule_validation": local, "v_r": int(local["passed"]),
             "v_llm": None, "semantic_reward": None,
         }
-        # Generic model-output retries still represent one committed routing step.
-        state.skill_routing_decisions[:] = [r for r in state.skill_routing_decisions if r["phase_id"] != phase]
         state.skill_routing_decisions.append(record)
         return record
 
@@ -297,6 +322,10 @@ class SkillRoutingAgentProxy:
 
     def prepare_input(self, original: dict) -> dict:
         prepared = deepcopy(original)
+        prepared.pop("package_config", None)
+        if isinstance(prepared.get("state"), dict):
+            prepared["state"].pop("package_config", None)
+        prepared.pop("candidate_routing", None)
         # Phase grammar remains useful; registration details describe the old
         # action Skill rather than the routing decision presented here.
         prepared["context"] = re.sub(
@@ -308,8 +337,9 @@ class SkillRoutingAgentProxy:
                         skill_routing_knowledge=deepcopy(self.knowledge))
         descriptions = prepared.get("candidate_descriptions", {})
         prepared["candidate_descriptions"] = {
-            action: {"meaning": descriptions.get(action, {}).get("meaning", ""),
-                     "next_skills": self.routes[action]}
+            action: {**{key: value for key, value in descriptions.get(action, {}).items()
+                        if key not in {"required_next_skills", "return_to_skill"}},
+                     "next_skills": self.routes.get(action, [])[:1]}
             for action in prepared.get("action_space", [])
         }
         self.last_input = prepared
@@ -321,6 +351,20 @@ class SkillRoutingAgentProxy:
             original = {key: value for key, value in kwargs.items() if key != "skill_input"}
         kwargs["skill_input"] = self.prepare_input(original)
         return self.delegate.select_action(**kwargs)
+
+    def decide_structured(self, *, skill_input, **kwargs):
+        prepared = self.prepare_input(skill_input)
+        if hasattr(self.delegate, "decide_structured"):
+            return self.delegate.decide_structured(skill_input=prepared, **kwargs)
+        return self.delegate.select_action(
+            skill_input=prepared, action_id=prepared.get("action_id"),
+            skill_id=prepared.get("skill_id"), decision_name=prepared.get("decision_name"),
+        )
+
+    def select_action_and_rewrite_expression(self, *, skill_input, expression):
+        return self.delegate.select_action_and_rewrite_expression(
+            skill_input=self.prepare_input(skill_input), expression=expression,
+        )
 
     def __getattr__(self, name):
         return getattr(self.delegate, name)

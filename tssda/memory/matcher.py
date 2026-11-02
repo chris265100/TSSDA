@@ -235,6 +235,7 @@ class StateMemoryMatcher:
     ) -> list[str]:
         remembered = record.profile
         reasons: list[str] = []
+        reasons.extend(temporal_rejection_reasons(current.temporal, remembered.temporal))
         if record.index != index:
             reasons.append("index_mismatch")
         if remembered.profile_version != current.profile_version:
@@ -360,6 +361,25 @@ def _score_profiles(
         group_scores=normalized_groups,
         feature_scores=feature_scores,
     )
+
+
+def temporal_rejection_reasons(current, remembered) -> list[str]:
+    """Known sampling incompatibilities cannot be diluted by other features."""
+    reasons = []
+    for name in ("timestamp_alignment", "sampling_regularity", "point_distribution"):
+        left, right = getattr(current, name), getattr(remembered, name)
+        if not _is_missing(left) and not _is_missing(right) and left != right:
+            reasons.append(f"temporal_{name}_incompatible")
+    order = ("subsecond", "second", "minute", "hour", "day_or_more")
+    left, right = current.sampling_interval, remembered.sampling_interval
+    if left in order and right in order and abs(order.index(left) - order.index(right)) > 1:
+        reasons.append("temporal_sampling_interval_incompatible")
+    return reasons
+
+
+def score_profiles(current, remembered):
+    """Shared feature-wise Sim and evidence coverage for both memory levels."""
+    return _score_profiles(current, remembered)
 
 
 def _profile_value(profile: StateMemoryProfile, path: str) -> Any:
@@ -673,6 +693,11 @@ _FEATURE_RULES = (
         0.06,
         _coverage_similarity,
     ),
+    _FeatureRule("temporal.sampling_interval", "temporal", .05,
+                 _ordered_similarity(("subsecond", "second", "minute", "hour", "day_or_more"))),
+    _FeatureRule("temporal.sampling_regularity", "temporal", .04, _exact),
+    _FeatureRule("temporal.timestamp_alignment", "temporal", .08, _exact),
+    _FeatureRule("temporal.point_distribution", "temporal", .05, _exact),
     _FeatureRule(
         "temporal.query_scope.data_overlap",
         "temporal",

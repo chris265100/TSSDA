@@ -35,8 +35,7 @@ ACTION_PRIOR_INSTRUCTION = (
 
 
 # Decisions that materially shape query semantics or function coverage. Skills
-# that only instantiate parameters/SQL, choose aliases, or assemble expression
-# structure are intentionally excluded.
+# that only instantiate parameters/SQL or choose aliases are excluded.
 DEFAULT_DECISION_LEARNING_SKILLS = frozenset(
     {
         # P0: global intent and its selected subtype.
@@ -60,6 +59,8 @@ DEFAULT_DECISION_LEARNING_SKILLS = frozenset(
         "GroupAxisSkill",
         # P4: regime plus dynamic function-family/function coverage.
         "OperatorRegimeSkill",
+        "SeriesExpressionSkill",
+        "AggregateExpressionSkill",
         "AggregateFunctionFamilySkill",
         "TimeSeriesFunctionFamilySkill",
         "ComponentInstantiationSkill",
@@ -1002,6 +1003,17 @@ class DecisionLearningAgentProxy:
         kwargs["skill_input"] = skill_input
         self.invoked = True
         return self.delegate.select_action(**kwargs)
+
+    def decide_structured(self, *, skill_input: dict[str, Any], **kwargs: Any) -> Any:
+        """Keep action priors active in the P4 exploration loop."""
+        prepared_input = self._inject_guidance(skill_input)
+        self.invoked = True
+        if hasattr(self.delegate, "decide_structured"):
+            return self.delegate.decide_structured(skill_input=prepared_input, **kwargs)
+        return self.delegate.select_action(
+            skill_input=prepared_input, action_id=prepared_input.get("action_id"),
+            skill_id=prepared_input.get("skill_id"), decision_name=prepared_input.get("decision_name"),
+        )
 
     def select_action_and_rewrite_expression(
         self,

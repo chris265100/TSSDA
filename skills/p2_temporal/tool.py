@@ -7,6 +7,7 @@ from typing import Any
 
 from iotdb_tools.schema_access import open_default_session
 from iotdb_tools.time_bounds import configured_year_bounds
+from iotdb_tools.temporal_sampling import read_timestamp_sample
 
 
 def normalize_action_space(action_space: list[str]) -> list[str]:
@@ -30,8 +31,10 @@ def read_working_schema_time_ranges(
     session: Any | None = None,
     minimum_year: int | None = None,
     maximum_year: int | None = None,
+    max_measurements: int = 8,
+    timestamp_sample_limit: int = 64,
 ) -> dict[str, Any]:
-    """Read start/end timestamps for each measurement in the working schema.
+    """Read bounded temporal evidence from the current working schema.
 
     Args:
         state:
@@ -46,8 +49,13 @@ def read_working_schema_time_ranges(
             Optional opened IoTDB Session. If omitted, a local default session
             is opened and closed by this function.
 
+        max_measurements, timestamp_sample_limit:
+            Probe at most eight series and 64 timestamps per series by default.
+            Bounds and samples are cached in trajectory State by the caller.
+
     Returns:
-        A dict containing one item per working-schema measurement. Timestamps
+        A dict containing one item per probed measurement. scope_sampled marks
+        a partial schema probe. Timestamps
         are formatted as YYYY-MM-DDTHH:MM:SS for prompt use, with raw
         epoch-millisecond values preserved in *_ms fields. If a measurement has
         no data, start_time and end_time are None.
@@ -69,6 +77,10 @@ def read_working_schema_time_ranges(
         )
 
     measurements = extract_working_measurements(current_working_schema)
+    total_measurement_count = len(measurements)
+    if max_measurements < 1:
+        raise ValueError("max_measurements must be positive")
+    measurements = measurements[:max_measurements]
     if not measurements:
         return _empty_time_range_result(
             current_working_schema,
@@ -108,6 +120,21 @@ def read_working_schema_time_ranges(
                     "end_time_ms": end_time,
                 }
             )
+        valid = [item for item in time_ranges if item["start_time_ms"] is not None and item["end_time_ms"] is not None]
+        if valid:
+            # Every series uses the same observation interval. Disjoint ranges
+            # remain detectable from the bounds without probing timestamps.
+            start = max(item["start_time_ms"] for item in valid)
+            end = min(item["end_time_ms"] for item in valid)
+            if start <= end:
+                for item in valid:
+                    try:
+                        item["timestamps_ms"] = read_timestamp_sample(
+                            session, item, start=start, end=end, limit=timestamp_sample_limit,
+                        )
+                    except Exception:
+                        # Timestamp evidence is optional; bounds remain useful.
+                        pass
     finally:
         if owns_session:
             session.close()
@@ -125,6 +152,9 @@ def read_working_schema_time_ranges(
             or _infer_database(measurements)
         ),
         "measurement_count": len(time_ranges),
+        "total_measurement_count": total_measurement_count,
+        "scope_sampled": total_measurement_count > len(time_ranges),
+        "timestamp_sample_limit": timestamp_sample_limit,
         "valid_measurement_count": valid_measurement_count,
         "excluded_measurement_count": len(time_ranges) - valid_measurement_count,
         "valid_time_filter": {
