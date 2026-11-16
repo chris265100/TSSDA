@@ -2,7 +2,7 @@
 
 TSSDA is an automated data generation framework for Text-to-SQL tasks in time-series databases.
 
-The TERN Benchmark dataset will be released soon.
+TERN Benchmark现已公开发布于[https://huggingface.co/spaces/THULab/TERN](https://huggingface.co/spaces/THULab/TERN)。
 
 ## Setup
 
